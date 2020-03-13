@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -178,22 +179,31 @@ public class IndexServlet extends HttpServlet {
 		prob.y = y;
 		prob.x = gameNodes;
 		
-		for (int h=0; h<prob.l; h++) {
+		int offset = 0;
+		for (int h=0; h<prob.l+offset; h++) {
 			Game game = games.get(h);
 			List<Double> strength1 = strengthMap.get(new TeamYear(game.teamID1, game.year));
 			List<Double> strength2 = strengthMap.get(new TeamYear(game.teamID2, game.year));
-			List<Double> gameFeatures = elWiseDiff(strength1, strength2);
-			
-			svm_node[] nodes = new svm_node[gameFeatures.size()];
-			for (int i=0; i<gameFeatures.size(); i++) {
-				svm_node node = new svm_node();
-				node.index = i;
-				node.value = gameFeatures.get(i);
-				nodes[i] = node;
+			if (strength1 != null && strength2 != null) {
+				List<Double> gameFeatures = elWiseDiff(strength1, strength2);
+				
+				svm_node[] nodes = new svm_node[gameFeatures.size()];
+				for (int i=0; i<gameFeatures.size(); i++) {
+					svm_node node = new svm_node();
+					node.index = i;
+					node.value = gameFeatures.get(i);
+					nodes[i] = node;
+				}
+				gameNodes[h-offset] = nodes;
+				y[h] = game.result;
+			} else {
+				offset++;
+				prob.l--;
 			}
-			gameNodes[h] = nodes;
-			y[h] = game.result;
 		}
+		
+		prob.y = Arrays.copyOf(prob.y, prob.l);
+		prob.x = Arrays.copyOf(prob.x, prob.l);
 		
 		svm_parameter params = new svm_parameter();
 		params.svm_type = svm_parameter.C_SVC;
@@ -215,28 +225,30 @@ public class IndexServlet extends HttpServlet {
 			int correct = 0;
 			int total = 0;
 			
-			for (int h=prob.l; h<games.size(); h++) {
+			for (int h=prob.l+offset; h<games.size(); h++) {
 				Game game = games.get(h);
 				List<Double> strength1 = strengthMap.get(new TeamYear(game.teamID1, game.year));
 				List<Double> strength2 = strengthMap.get(new TeamYear(game.teamID2, game.year));
-				List<Double> gameFeatures = elWiseDiff(strength1, strength2);
-				
-				svm_node[] nodes = new svm_node[gameFeatures.size()];
-				for (int i=0; i<gameFeatures.size(); i++) {
-					svm_node node = new svm_node();
-					node.index = i;
-					node.value = gameFeatures.get(i);
-					nodes[i] = node;
+				if (strength1 != null && strength2 != null) {
+					List<Double> gameFeatures = elWiseDiff(strength1, strength2);
+					
+					svm_node[] nodes = new svm_node[gameFeatures.size()];
+					for (int i=0; i<gameFeatures.size(); i++) {
+						svm_node node = new svm_node();
+						node.index = i;
+						node.value = gameFeatures.get(i);
+						nodes[i] = node;
+					}
+					
+					double pred = libsvm.svm.svm_predict(model, nodes);
+									
+					int res = (int)(pred + 0.5);
+					
+					if (res == game.result) {
+						correct++;
+					}
+					total++;
 				}
-				
-				double pred = libsvm.svm.svm_predict(model, nodes);
-								
-				int res = (int)(pred + 0.5);
-				
-				if (res == game.result) {
-					correct++;
-				}
-				total++;
 			}
 			
 			accuracy = correct/(double)total;
@@ -292,8 +304,9 @@ public class IndexServlet extends HttpServlet {
 				getTeamStrengthVector(conn, teamID, year,
 									  rushYards, passYards, tds,
 									  tflYards, sacks, inters);
-			
-			out.put(teamYear, strengthVector);
+			if (strengthVector != null) {
+				out.put(teamYear, strengthVector);
+			}
 		}
 		
 		return out;
@@ -310,46 +323,68 @@ public class IndexServlet extends HttpServlet {
 								   int inters) throws SQLException {
 		List<String> selects = new ArrayList<>();
 		List<String> limits = new ArrayList<>();
-		List<String> orderbys = new ArrayList<>();
 		List<Integer> limValues = new ArrayList<>();
 		
 		List<Double> resultList = new ArrayList<>();
 		
-		addSelect(selects, limits, orderbys, limValues, rushYards, "RYards");
-		addSelect(selects, limits, orderbys, limValues, passYards, "PYards");
-		addSelect(selects, limits, orderbys, limValues, tds, "TD");
-		addSelect(selects, limits, orderbys, limValues, tflYards, "Tflyds");
-		addSelect(selects, limits, orderbys, limValues, sacks, "Sack");
-		addSelect(selects, limits, orderbys, limValues, inters, "Inter");
+		addSelect(selects, limits, limValues, rushYards, "RYards");
+		addSelect(selects, limits, limValues, passYards, "PYards");
+		addSelect(selects, limits, limValues, tds, "TD");
+		addSelect(selects, limits, limValues, tflYards, "Tflyds");
+		addSelect(selects, limits, limValues, sacks, "Sack");
+		addSelect(selects, limits, limValues, inters, "Inter");
 		
+		StringBuilder sqlStr = new StringBuilder();
 		for (int i=0; i<selects.size(); i++) {
 			String selectStr = selects.get(i);
 			String limitStr = limits.get(i);
-			String orderbyStr = orderbys.get(i);
-			int limValue = limValues.get(i);
-			String sqlStr = "select " + selectStr +
-					" from (PLAYER left join OFFPLAYER on PLAYER.Pid = OFFPLAYER.Pid) left join DEFPLAYER on PLAYER.Pid = DEFPLAYER.Pid"
-					+ " where Tid = " + teamId + " and " + "SYear = " + year
-					+ " " + orderbyStr
-					+ " " + limitStr;
-			PreparedStatement players =  conn.prepareStatement(sqlStr);			
-			ResultSet results = players.executeQuery();
 			
-			List<Double> curResults = new ArrayList<>();
-			
-			while (results.next()) {
-				String str = results.getString(1); // retrieve single statistic column
-				if (str == null) {
-					curResults.add(0d);
-				} else {
-					curResults.add(Double.parseDouble(str));
-				}
+			if (i != 0) {
+				sqlStr.append(" UNION ALL ");
 			}
-		 	while (curResults.size() < limValue) { // if team doesn't have enough players,
-				curResults.add(0d);				   // pad vector with zeroes
-			}
-		 	resultList.addAll(curResults);
+			sqlStr.append("(select ").append(Integer.toString(i)).append(" as feature, ").append(selectStr)
+				  .append(" from (PLAYER left join OFFPLAYER on PLAYER.Pid = OFFPLAYER.Pid) left join DEFPLAYER on PLAYER.Pid = DEFPLAYER.Pid")
+				  .append(" where Tid = " + teamId + " and " + "SYear = ").append(year)
+			      .append(" ")
+				  .append(" ").append(limitStr).append(")");
 		}
+		sqlStr.append(" ORDER BY feature ASC, val DESC");
+		
+		PreparedStatement players =  conn.prepareStatement(sqlStr.toString());			
+		ResultSet results = players.executeQuery();
+		
+		int prevInd = 0;
+		int curCount = 0;
+		int ind=-1;
+		while (results.next()) {
+			ind = results.getInt(1);
+			String val = results.getString(2); // retrieve single statistic column
+			if (ind != prevInd) {
+				for (int i=curCount; i<limValues.get(ind-1); i++) {
+					resultList.add(0d);
+				}
+				curCount = 0;
+			}
+			if (val == null) {
+				resultList.add(0d); // pad feature vector with zeros if a team doesn't have enough players with the stat
+			} else {
+				resultList.add(Double.parseDouble(val));
+			}
+			curCount++;
+			prevInd = ind;
+		}
+		if (ind == -1) {
+			return null;
+		}
+		for (int i=curCount; i<limValues.get(ind); i++) {
+			resultList.add(0d);
+		}
+		
+		int testSum = 0;
+		for (int i=0; i<limValues.size(); i++) {
+			testSum += limValues.get(i);
+		}
+		assert(testSum == resultList.size());
 		
 		return resultList;
 	}
@@ -368,23 +403,21 @@ public class IndexServlet extends HttpServlet {
 		return sb.toString();
 	}
 	
-	private void addSelect(List<String> selects, List<String> limits, List<String> orderbys, List<Integer> limValues, int count, String string) {
+	private void addSelect(List<String> selects, List<String> limits, List<Integer> limValues, int count, String string) {
 		if (count != -1) {
 			String select = string;
 			String limit = "";
-			String orderby = "";
 			
 			if (count == 0) {
-				select = "SUM("+select+") as " + select;
+				select = "SUM("+select+") as val";
 				limValues.add(1);
 			} else {
+				select = select + " as val";
 				limit = "limit " + count;
 				limValues.add(count);
-				orderby = "order by "+select+" desc";
 			}
 			selects.add(select);
 			limits.add(limit);
-			orderbys.add(orderby);
 		}
 	}
 	
