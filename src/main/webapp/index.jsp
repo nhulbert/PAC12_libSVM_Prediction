@@ -1,17 +1,6 @@
 <!--
-Copyright 2018 Google LLC
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Neil Hulbert
+TCSS 445
 -->
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
@@ -20,7 +9,7 @@ limitations under the License.
     <title>PAC-12 DB</title>
     <h1>PAC-12 Prediction Utility</h1>
 </head>
-
+<a href="http://130.211.231.87/index.aspx">Back to Main</a>
   <body>  
   <form method="post" action="" class="form" id="code">
   	  <h2>Data prediction is based on:</h2>
@@ -73,9 +62,9 @@ limitations under the License.
 	    <option value="10">Top 10 players</option>	   
 	  </select>
 
-      </br>
+      </br></br>
       Defense: </br>
-      Tackle Loss Yards
+      Tackle Loss Yards:
       <select id="tflYards" name="tflYards">
 	    <option value="-1">Not used</option>
 	    <option value="0">Team Total</option>
@@ -91,7 +80,7 @@ limitations under the License.
 	    <option value="10">Top 10 players</option>	   
 	  </select>
 	  
-	  Sacks
+	  Sacks:
       <select id="sacks" name="sacks">
 	    <option value="-1">Not used</option>
 	    <option value="0">Team Total</option>
@@ -107,7 +96,7 @@ limitations under the License.
 	    <option value="10">Top 10 players</option>	   
 	  </select>
       
-      Interceptions
+      Interceptions:
       <select id="inters" name="inters">
 	    <option value="-1">Not used</option>
 	    <option value="0">Team Total</option>
@@ -122,6 +111,8 @@ limitations under the License.
 	    <option value="9">Top 9 players</option>
 	    <option value="10">Top 10 players</option>	   
 	  </select>
+	  </br></br>
+	  (By far, the most accurate prediction seems to come from choosing "Team Total" in every category)
 	  </br>
 
   	  </br></br></br>
@@ -130,6 +121,7 @@ limitations under the License.
   	  </br>
   	  <input type="submit" value="Go">
   </form>
+  </br>
   ${result}
   
   </body>
